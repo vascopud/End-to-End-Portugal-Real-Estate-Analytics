@@ -66,6 +66,22 @@ def extract_location_from_url(url):
     except Exception:
         return None
 
+def extract_rooms_from_title(title):
+    """Fallback to extract room count (T0, T1, etc) from title if metadata is missing."""
+    if not title:
+        return None
+    # Look for T followed by digits (e.g., T3, T2)
+    match = re.search(r'T(\d+)', title, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    
+    # Handle specific typologies
+    title_lower = title.lower()
+    if 'estúdio' in title_lower or 't0' in title_lower:
+        return 0
+        
+    return None
+
 def load_freguesias_urls():
     """
     Reads freguesias_list.txt and returns a flat list of scrape tasks.
@@ -233,12 +249,16 @@ def scrape_page(base_url, page_num):
                         if item.get('isPromoted') and page_num > 1 and metadata.get('total_hits', 0) == 0:
                             continue
                         
+                        title = item.get('title', 'N/A')
+                        rooms_meta = item.get('numberOfRooms')
+                        rooms_val = int(rooms_meta) if rooms_meta else extract_rooms_from_title(title)
+
                         res_data = {
-                            'title': item.get('title', 'N/A'),
+                            'title': title,
                             'price': int(item.get('totalPrice', {}).get('value', 0)) if item.get('totalPrice') else 0,
                             'location': f"{item.get('location',{}).get('city',{}).get('name','')}, {item.get('location',{}).get('district',{}).get('name','')}",
                             'area_m2': float(item.get('areaInSquareMeters', 0)) if item.get('areaInSquareMeters') else None,
-                            'rooms': int(item.get('numberOfRooms', 0)) if item.get('numberOfRooms') else None,
+                            'rooms': rooms_val,
                             'url': f"https://www.imovirtual.com/pt/anuncio/{item.get('slug')}" if item.get('slug') else None
                         }
                         if res_data['url']:
@@ -262,14 +282,18 @@ def scrape_page(base_url, page_num):
                         
                         for item in items:
                             try:
+                                title = item.get('name', 'N/A')
+                                rooms_meta = item.get('itemOffered', {}).get('numberOfRooms')
+                                rooms_val = int(rooms_meta) if rooms_meta else extract_rooms_from_title(title)
+
                                 addr = item.get('itemOffered', {}).get('address', {})
                                 loc_str = f"{addr.get('addressLocality','')}, {addr.get('addressRegion','')}".strip(', ')
                                 res_data = {
-                                    'title': item.get('name', 'N/A'),
+                                    'title': title,
                                     'price': int(item.get('price', 0)) if item.get('price') else 0,
                                     'location': loc_str,
                                     'area_m2': float(item.get('itemOffered', {}).get('floorSize', {}).get('value', 0)) if item.get('itemOffered', {}).get('floorSize') else None,
-                                    'rooms': int(item.get('itemOffered', {}).get('numberOfRooms', 0)) if item.get('itemOffered', {}).get('numberOfRooms') else None,
+                                    'rooms': rooms_val,
                                     'url': item.get('url')
                                 }
                                 if res_data['url']:
