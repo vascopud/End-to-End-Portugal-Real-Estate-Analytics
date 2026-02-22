@@ -77,12 +77,12 @@ def load_raw_data():
     return df
 
 # Main Title
-st.title("🏠 Portugal Real Estate Hub")
+st.title("Portugal Real Estate Hub")
 
 # Create Tabs
-tab_predict, tab_insights = st.tabs(["🔮 Price Prediction", "📊 Data Insights"])
+tab_predict, tab_insights = st.tabs(["Price Prediction", "Data Insights"])
 
-# --- TAB 1: PREDICTION ---
+# Tab 1: Prediction
 with tab_predict:
     st.header("Predict Hypothetical House Price")
     
@@ -124,7 +124,7 @@ with tab_predict:
     except Exception as e:
         st.error(f"Error loading assets: {e}")
 
-# --- TAB 2: INSIGHTS ---
+# Tab 2: Insights
 with tab_insights:
     st.header("Market Exploration & Averages")
     
@@ -163,14 +163,23 @@ with tab_insights:
     c1, c2 = st.columns([2, 1])
     
     with c1:
-        st.subheader("Price Distribution by Concelho")
+        st.subheader("Geographic Price Comparison")
+        
+        metric_to_plot = 'price_per_m2'
+        
         if not filtered_df.empty:
-            # Aggregate for chart
-            geo_avg = filtered_df.groupby('concelho')['price'].mean().sort_values(ascending=False).head(15).reset_index()
-            fig = px.bar(geo_avg, x='price', y='concelho', orientation='h', 
-                         title="Top 15 Concelhos by Avg Price",
-                         labels={'price': 'Avg Price (€)', 'concelho': 'Concelho'},
-                         color='price', color_continuous_scale='Blues')
+            # Aggregate based on Concelho (excluding outlier Ourem/Ourém)
+            mask = ~filtered_df['concelho'].str.contains('Ourem|Ourém', case=False, na=False)
+            geo_avg = filtered_df[mask].groupby('concelho')[metric_to_plot].mean().sort_values(ascending=False).head(20).reset_index()
+            
+            fig = px.bar(geo_avg, x=metric_to_plot, y='concelho', orientation='h', 
+                         title="Top 20 Concelhos by Avg Price / m²",
+                         labels={metric_to_plot: 'Avg Price / m² (€)', 'concelho': 'Concelho'},
+                         color=metric_to_plot, color_continuous_scale='Viridis')
+            
+            # Force all Y-axis labels to show
+            fig.update_yaxes(dtick=1)
+            
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("No data matches the selected filters.")
@@ -178,9 +187,29 @@ with tab_insights:
     with c2:
         st.subheader("Typology Mix")
         if not filtered_df.empty:
-            typology_counts = filtered_df['room_count'].value_counts().head(5)
-            fig_pie = px.pie(values=typology_counts.values, names=typology_counts.index, 
-                             title="Top 5 Room Counts")
+            # Clean room_count for pie chart
+            def group_typology(val):
+                if pd.isna(val): return "Unknown"
+                try:
+                    num = int(val)
+                    if num > 4: return "Other"
+                    return f"T{num}"
+                except:
+                    return "Unknown"
+            
+            filtered_df['typology'] = filtered_df['room_count'].apply(group_typology)
+            
+            # Count and prepare for pie chart
+            typology_counts = filtered_df['typology'].value_counts().reset_index()
+            typology_counts.columns = ['typology', 'count']
+            
+            # Define specific order: T0, T1, T2, T3, T4, Other, Unknown
+            custom_order = ["T0", "T1", "T2", "T3", "T4", "Other", "Unknown"]
+            
+            fig_pie = px.pie(typology_counts, values='count', names='typology', 
+                             title="Typology Distribution",
+                             hole=0.4,
+                             category_orders={"typology": custom_order})
             st.plotly_chart(fig_pie, use_container_width=True)
 
     # Raw Data Table
